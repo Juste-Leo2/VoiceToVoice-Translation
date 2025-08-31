@@ -1,9 +1,9 @@
-# app.py (version modifiée)
+# app.py (Version finale avec gestionnaire de voix)
 import gradio as gr
 import pandas as pd
 from utils import (
     get_supported_languages,
-    get_piper_voices, # On le garde pour trouver une voix par défaut
+    get_piper_voices, # Devient la source principale pour les voix disponibles
     process_diarization_and_translation,
     synthesize_and_combine
 )
@@ -15,24 +15,49 @@ ALL_PIPER_VOICES = get_all_piper_voice_names()
 
 def get_all_voices_for_lang(lang_code):
     """Filtre la liste complète des voix pour un code langue donné."""
+    if not lang_code:
+        return []
     return [voice for voice in ALL_PIPER_VOICES if voice.startswith(f"{lang_code}_")]
 
-# --- Fonctions de l'interface Gradio ---
+# NOUVEAU: Fonction pour afficher les voix installées dans un format lisible
+def get_installed_voices_df():
+    """Retourne un DataFrame des voix installées localement, groupées par langue."""
+    voices_by_lang = get_piper_voices()
+    if not voices_by_lang:
+        return pd.DataFrame(columns=["Langue", "Voix Installées"])
+    
+    data = []
+    for lang, voices in sorted(voices_by_lang.items()):
+        data.append({"Langue": lang, "Voix Installées": ", ".join(voices)})
+    return pd.DataFrame(data)
 
-def on_voice_select(voice_name):
-    """
-    Fonction déclenchée lorsqu'une voix est sélectionnée.
-    Elle télécharge la voix si nécessaire et retourne un message de statut.
-    """
+
+# --- Fonctions pour le Gestionnaire de Voix (NOUVEAU) ---
+
+def update_voice_dl_options(lang_name):
+    """Met à jour les choix de voix à télécharger en fonction de la langue sélectionnée."""
+    if not lang_name:
+        return gr.update(choices=[], value=None)
+    lang_code = supported_langs.get(lang_name)
+    voices = get_all_voices_for_lang(lang_code)
+    return gr.update(choices=voices, value=voices[0] if voices else None)
+
+def handle_voice_download(voice_name):
+    """Gère le téléchargement d'une voix et met à jour l'affichage."""
     if not voice_name:
-        return "Aucune voix sélectionnée."
+        return "Veuillez sélectionner une voix.", get_installed_voices_df()
     
     success = download_voice_if_needed(voice_name)
+    
     if success:
-        return f"Voix '{voice_name}' prête à l'emploi."
+        status_message = f"Voix '{voice_name}' prête."
     else:
-        # Gradio ne gère pas bien les gr.Error dans les events .change, un message est plus sûr
-        return f"Échec du téléchargement pour la voix '{voice_name}'. Vérifiez la console."
+        status_message = f"Échec du téléchargement pour '{voice_name}'. Vérifiez la console."
+        
+    return status_message, get_installed_voices_df()
+
+
+# --- Fonctions de l'interface Gradio (MODIFIÉES) ---
 
 def step1_process_audio(audio_file, num_speakers, source_lang_name, target_lang_name):
     """
@@ -53,7 +78,7 @@ def step1_process_audio(audio_file, num_speakers, source_lang_name, target_lang_
 
     if not segments_data:
         gr.Warning("Aucun segment de parole n'a été détecté.")
-        return None, [], gr.update(visible=False), None
+        return None, [], gr.update(visible=False), *(gr.Dropdown(visible=False) for _ in range(10))
 
     df = pd.DataFrame(segments_data)
     df_display = df[['start', 'end', 'speaker', 'translated_text']].copy()
@@ -63,23 +88,22 @@ def step1_process_audio(audio_file, num_speakers, source_lang_name, target_lang_
     unique_speakers = sorted(df['speaker'].unique())
     voice_assignment_components = []
     
-    all_target_voices = get_all_voices_for_lang(target_lang_code)
+    # MODIFIÉ: On ne charge que les voix LOCALEMENT disponibles pour la langue cible
     locally_available_target_voices = get_piper_voices().get(target_lang_code, [])
 
-    if not all_target_voices:
-        gr.Warning(f"Aucune voix Piper connue pour la langue cible '{target_lang_code}'.")
-
-    # Déterminer une voix par défaut (la première disponible localement, ou la première de la liste)
-    default_voice = locally_available_target_voices[0] if locally_available_target_voices else (all_target_voices[0] if all_target_voices else None)
+    if not locally_available_target_voices:
+        gr.Warning(
+            f"Aucune voix n'est installée localement pour la langue '{target_lang_name}' ({target_lang_code}). "
+            f"Veuillez en télécharger une via le 'Gestionnaire de Voix Piper' en haut de la page."
+        )
+        # On affiche quand même les dropdowns pour ne pas crasher l'UI, mais ils seront vides.
     
-    # Pré-télécharger la voix par défaut si elle n'est pas locale
-    if default_voice:
-        download_voice_if_needed(default_voice)
-
+    default_voice = locally_available_target_voices[0] if locally_available_target_voices else None
+    
     for speaker in unique_speakers:
         label = f"Voix pour {speaker}"
         dropdown = gr.Dropdown(
-            choices=all_target_voices,
+            choices=locally_available_target_voices, # MODIFIÉ: On n'utilise que les voix locales
             label=label,
             value=default_voice
         )
@@ -98,31 +122,50 @@ def step2_generate_audio(segments_data_json, *voice_choices):
     if not segments_data_json:
         raise gr.Error("Les données des segments sont manquantes.")
 
-    segments_data = segments_data_json
-    unique_speakers = sorted(list(set(seg['speaker'] for seg in segments_data)))
-    
-    # Assurer que toutes les voix nécessaires sont téléchargées avant la synthèse
+    # La vérification de téléchargement n'est plus critique ici car les voix sont déjà locales,
+    # mais on la garde par sécurité.
+    unique_speakers = sorted(list(set(seg['speaker'] for seg in segments_data_json)))
     for voice in voice_choices[:len(unique_speakers)]:
-        if not download_voice_if_needed(voice):
-             raise gr.Error(f"Impossible de télécharger la voix requise '{voice}'. La synthèse est annulée.")
+        if not download_voice_if_needed(voice): # Ceci vérifiera juste l'existence
+             raise gr.Error(f"La voix requise '{voice}' est introuvable. La synthèse est annulée.")
 
     voice_mapping = {speaker: voice for speaker, voice in zip(unique_speakers, voice_choices)}
     
-    final_audio_path = synthesize_and_combine(segments_data, voice_mapping)
+    final_audio_path = synthesize_and_combine(segments_data_json, voice_mapping)
     
     return final_audio_path
 
 # --- Construction de l'interface Gradio ---
 
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# Système de Traduction Voice-to-Voice (avec téléchargement dynamique)")
-    gr.Markdown("Utilise `pyannote`, `Canary-1b-v2`, et `Piper-TTS`. Les voix Piper sont téléchargées à la demande.")
+    gr.Markdown("# Système de Traduction Voice-to-Voice")
+    gr.Markdown("Utilise `pyannote`, `Canary-1b-v2`, et `Piper-TTS`.")
 
-    status_textbox = gr.Textbox(label="Statut du téléchargement", interactive=False)
+    # NOUVEAU: Le gestionnaire de voix
+    with gr.Accordion("Gestionnaire de Voix Piper (Ouvrir pour télécharger/voir les voix)", open=False):
+        with gr.Row():
+            with gr.Column(scale=2):
+                gr.Markdown("### Télécharger une nouvelle voix")
+                lang_select_for_dl = gr.Dropdown(
+                    choices=list(supported_langs.keys()), 
+                    label="1. Choisir la langue"
+                )
+                voice_select_for_dl = gr.Dropdown(label="2. Choisir la voix")
+                download_button = gr.Button("Télécharger la voix sélectionnée", variant="secondary")
+                download_status = gr.Textbox(label="Statut", interactive=False)
+            with gr.Column(scale=3):
+                gr.Markdown("### Voix actuellement installées")
+                installed_voices_df = gr.DataFrame(
+                    value=get_installed_voices_df, 
+                    headers=["Langue", "Voix Installées"],
+                    interactive=False,
+                    every=5 # Rafraîchit toutes les 5 secondes
+                )
+
+    gr.Markdown("---") # Séparateur visuel
 
     with gr.Row():
         with gr.Column(scale=1):
-            # ... (identique à avant)
             gr.Markdown("## Étape 1 : Configuration et Traitement")
             audio_input = gr.Audio(type="filepath", label="Fichier audio d'entrée (.wav)")
             num_speakers_input = gr.Slider(minimum=1, maximum=10, value=2, step=1, label="Nombre de locuteurs")
@@ -140,7 +183,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 
     with gr.Group(visible=False) as assignment_group:
         gr.Markdown("## Étape 2 : Assignation des Voix et Génération")
-        gr.Markdown("Assignez une voix. Si une voix n'est pas locale, elle sera téléchargée automatiquement.")
+        gr.Markdown("Assignez une voix **parmi celles que vous avez installées**.")
         
         voice_assignment_inputs = []
         with gr.Row():
@@ -154,6 +197,19 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 
     # --- Connexion des événements ---
 
+    # NOUVEAU: Événements pour le gestionnaire de voix
+    lang_select_for_dl.change(
+        fn=update_voice_dl_options,
+        inputs=lang_select_for_dl,
+        outputs=voice_select_for_dl
+    )
+    download_button.click(
+        fn=handle_voice_download,
+        inputs=voice_select_for_dl,
+        outputs=[download_status, installed_voices_df]
+    )
+
+    # Événements du workflow principal
     process_button.click(
         fn=step1_process_audio,
         inputs=[audio_input, num_speakers_input, source_lang_dropdown, target_lang_dropdown],
@@ -169,13 +225,9 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         outputs=voice_assignment_inputs
     )
     
-    # Lier l'événement de changement pour chaque dropdown de voix à la fonction de téléchargement
-    for dropdown in voice_assignment_inputs:
-        dropdown.change(
-            fn=on_voice_select,
-            inputs=dropdown,
-            outputs=status_textbox
-        )
+    # SUPPRIMÉ: On n'a plus besoin de télécharger les voix au moment de la sélection
+    # for dropdown in voice_assignment_inputs:
+    #     dropdown.change(...)
 
     generate_button.click(
         fn=step2_generate_audio,

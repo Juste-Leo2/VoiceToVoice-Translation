@@ -1,15 +1,13 @@
-# downloader.py (Version corrigée et robuste)
 import os
 import sys
 import subprocess
-# shutil n'est plus nécessaire !
 
 VOICES_DIR = "voices"
 
 def get_all_piper_voice_names():
     """Retourne une liste statique de tous les noms de voix Piper connus."""
     # Cette liste est basée sur la sortie que vous avez fournie.
-    # On pourrait la rendre dynamique en scrappant une page, mais c'sest plus simple et fiable.
+    # On pourrait la rendre dynamique en scrappant une page, mais c'est plus simple et fiable.
     return [
         "ar_JO-kareem-low", "ar_JO-kareem-medium", "ca_ES-upc_ona-medium", "ca_ES-upc_ona-x_low",
         "ca_ES-upc_pau-x_low", "cs_CZ-jirka-low", "cs_CZ-jirka-medium", "cy_GB-bu_tts-medium",
@@ -60,7 +58,7 @@ def download_voice_if_needed(voice_name: str) -> bool:
     Retourne True en cas de succès ou si la voix existe déjà, False en cas d'échec.
     """
     if not voice_name:
-        return False # On considère que "pas de voix" n'est pas un succès
+        return False
 
     os.makedirs(VOICES_DIR, exist_ok=True)
 
@@ -73,23 +71,22 @@ def download_voice_if_needed(voice_name: str) -> bool:
 
     print(f"Téléchargement de la voix '{voice_name}'...")
     try:
-        # MODIFICATION CLÉ : On dit à Piper où télécharger les fichiers
+        # MODIFICATION CLÉ : L'argument correct est --download-dir, et non --voices-dir
         command = [
             sys.executable, "-m", "piper.download_voices",
-            "--voices-dir", VOICES_DIR,  # <- L'ajout magique
+            "--download-dir", VOICES_DIR,  # <- CORRIGÉ
             voice_name
         ]
         
-        subprocess.run(command, check=True, capture_output=True, text=True)
+        # On utilise capture_output=True pour éviter d'encombrer la console principale en cas de succès
+        result = subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8')
 
-        # Les fichiers sont maintenant directement dans VOICES_DIR.
-        # On vérifie juste qu'ils sont bien arrivés.
         if os.path.exists(onnx_path) and os.path.exists(json_path):
             print(f"La voix '{voice_name}' a été téléchargée avec succès dans '{VOICES_DIR}'.")
             return True
         else:
-            # Ce cas est peu probable mais c'est une sécurité
             print(f"Erreur : Le téléchargement semble avoir réussi mais les fichiers de la voix '{voice_name}' sont introuvables.")
+            print(f"Sortie du script de téléchargement : {result.stdout}\n{result.stderr}")
             return False
 
     except subprocess.CalledProcessError as e:
