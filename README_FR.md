@@ -37,7 +37,7 @@ Une application basée sur Gradio pour la traduction vocale de bout en bout. Ell
     ```sh
     python -m pip install --upgrade pip
     pip install uv
-    uv pip install -r requirements.txt
+    uv pip install -r requirements.txt --no-deps --index-strategy unsafe-best-match
     ```
 
 ## Lancement

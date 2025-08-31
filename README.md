@@ -37,7 +37,7 @@ A Gradio-based application for end-to-end voice translation. It uses `pyannote` 
     ```sh
     python -m pip install --upgrade pip
     pip install uv
-    uv pip install -r requirements.txt
+    uv pip install -r requirements.txt --no-deps --index-strategy unsafe-best-match
     ```
 
 ## Usage
