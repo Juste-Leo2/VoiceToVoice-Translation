@@ -1,0 +1,17 @@
+# requirements.txt
+
+# Extra index for PyTorch with CUDA 12.8 support
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+# Core deep learning frameworks
+torch
+torchvision
+torchaudio
+
+# Main application packages
+gradio
+pandas
+pydub
+piper-tts
+pyannote.audio
+nemo-toolkit[asr]
