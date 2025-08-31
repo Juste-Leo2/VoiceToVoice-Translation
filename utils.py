@@ -1,4 +1,4 @@
-# utils.py (Version finale corrigée)
+# utils.py (Final corrected version)
 import os
 import wave
 import torch
@@ -8,21 +8,21 @@ from piper import PiperVoice
 from pyannote.audio import Pipeline
 from nemo.collections.asr.models import ASRModel
 
-# --- 1. Configuration et chargement des modèles "légers" ---
-print("Chargement du modèle Canary-1b-v2, veuillez patienter...")
+# --- Configuration and loading of "lightweight" models ---
+print("Loading Canary-1b-v2 model, please wait...")
 
-# MODIFIÉ ICI: On crée un objet torch.device, pas une simple string.
+# MODIFIED HERE: We create a torch.device object, not just a string.
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Utilisation du device : {DEVICE}")
+print(f"Using device: {DEVICE}")
 
 canary_model = ASRModel.from_pretrained(model_name="nvidia/canary-1b-v2").to(DEVICE)
 
-# On initialise le pipeline à None. Il sera chargé au premier appel.
+# Initialize the pipeline to None. It will be loaded on the first call.
 diarization_pipeline = None
 
-# --- Fonctions Utilitaires (inchangées) ---
+# --- Utility Functions ---
 def get_supported_languages():
-    return { "Anglais": "en", "Français": "fr", "Allemand": "de", "Espagnol": "es", "Italien": "it", "Portugais": "pt", "Néerlandais": "nl", "Polonais": "pl", "Russe": "ru", "Suédois": "sv", "Ukrainien": "uk", "Tchèque": "cs", "Danois": "da", "Finlandais": "fi", "Grec": "el", "Hongrois": "hu", "Letton": "lv", "Roumain": "ro", "Slovaque": "sk", "Slovène": "sl" }
+    return { "English": "en", "French": "fr", "German": "de", "Spanish": "es", "Italian": "it", "Portuguese": "pt", "Dutch": "nl", "Polish": "pl", "Russian": "ru", "Swedish": "sv", "Ukrainian": "uk", "Czech": "cs", "Danish": "da", "Finnish": "fi", "Greek": "el", "Hungarian": "hu", "Latvian": "lv", "Romanian": "ro", "Slovak": "sk", "Slovenian": "sl" }
 
 def get_piper_voices(voices_dir="voices"):
     voices_by_lang = {}
@@ -35,40 +35,40 @@ def get_piper_voices(voices_dir="voices"):
             voices_by_lang[lang_code].append(voice_name)
     return voices_by_lang
 
-# --- 2. Logique principale de traitement (inchangée depuis la version précédente) ---
+# --- Main Processing Logic ---
 def process_diarization_and_translation(audio_path, num_speakers, source_lang, target_lang):
     global diarization_pipeline
 
     if diarization_pipeline is None:
-        print("Chargement du pipeline de diarisation (premier appel)...")
+        print("Loading diarization pipeline (first call)...")
         try:
             diarization_pipeline = Pipeline.from_pretrained("ivrit-ai/pyannote-speaker-diarization-3.1").to(DEVICE)
-            print("Modèle Pyannote chargé avec succès.")
+            print("Pyannote model loaded successfully.")
         except Exception as e:
             error_message = (
-                f"Échec du chargement du modèle de diarisation Pyannote. "
-                f"Vérifiez votre connexion internet et que vous êtes bien authentifié à Hugging Face "
-                f"(commande à lancer dans votre terminal: 'huggingface-cli login'). Erreur: {e}"
+                f"Failed to load the Pyannote diarization model. "
+                f"Check your internet connection and ensure you are authenticated with Hugging Face "
+                f"(run this command in your terminal: 'huggingface-cli login'). Error: {e}"
             )
             print(error_message)
             raise gr.Error(error_message)
 
-    print("Pré-traitement de l'audio (16kHz, mono)...")
+    print("Preprocessing audio (16kHz, mono)...")
     try:
         audio = AudioSegment.from_file(audio_path)
     except Exception as e:
-        raise gr.Error(f"Impossible de lire le fichier audio. Assurez-vous que FFmpeg est installé. Erreur: {e}")
+        raise gr.Error(f"Cannot read the audio file. Make sure FFmpeg is installed. Error: {e}")
         
     audio = audio.set_frame_rate(16000).set_channels(1)
     
     temp_audio_for_pyannote = "temp_pyannote_input.wav"
     audio.export(temp_audio_for_pyannote, format="wav")
 
-    print("Diarisation en cours...")
+    print("Diarization in progress...")
     diarization = diarization_pipeline(temp_audio_for_pyannote, num_speakers=num_speakers)
     os.remove(temp_audio_for_pyannote)
 
-    print("Traduction des segments...")
+    print("Translating segments...")
     segments_data = []
     
     temp_chunk_dir = "temp_chunks_for_canary"
@@ -99,9 +99,9 @@ def process_diarization_and_translation(audio_path, num_speakers, source_lang, t
     
     return segments_data
 
-# --- 3. Logique de synthèse (MODIFIÉE) ---
+# --- Synthesis Logic (MODIFIED) ---
 def synthesize_and_combine(segments_data, voice_mapping, voices_dir="voices"):
-    print("Synthèse vocale et assemblage en cours...")
+    print("Synthesizing speech and combining audio...")
     final_audio = AudioSegment.empty()
     last_segment_end_time = 0.0
 
@@ -110,7 +110,7 @@ def synthesize_and_combine(segments_data, voice_mapping, voices_dir="voices"):
         if voice_name and voice_name not in piper_voices:
             model_path = os.path.join(voices_dir, f"{voice_name}.onnx")
             if os.path.exists(model_path):
-                # MODIFIÉ ICI: On vérifie le type de l'objet DEVICE, pas sa valeur en string.
+                # MODIFIED HERE: We check the type of the DEVICE object, not its string value.
                 use_cuda_flag = (DEVICE.type == "cuda")
                 piper_voices[voice_name] = PiperVoice.load(model_path, use_cuda=use_cuda_flag)
 

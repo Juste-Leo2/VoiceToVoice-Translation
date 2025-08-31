@@ -5,9 +5,9 @@ import subprocess
 VOICES_DIR = "voices"
 
 def get_all_piper_voice_names():
-    """Retourne une liste statique de tous les noms de voix Piper connus."""
-    # Cette liste est basée sur la sortie que vous avez fournie.
-    # On pourrait la rendre dynamique en scrappant une page, mais c'est plus simple et fiable.
+    """Returns a static list of all known Piper voice names."""
+    # This list is based on the output you provided.
+    # It could be made dynamic by scraping a page, but this is simpler and more reliable.
     return [
         "ar_JO-kareem-low", "ar_JO-kareem-medium", "ca_ES-upc_ona-medium", "ca_ES-upc_ona-x_low",
         "ca_ES-upc_pau-x_low", "cs_CZ-jirka-low", "cs_CZ-jirka-medium", "cy_GB-bu_tts-medium",
@@ -53,9 +53,9 @@ def get_all_piper_voice_names():
 
 def download_voice_if_needed(voice_name: str) -> bool:
     """
-    Vérifie si une voix existe localement. Si non, la télécharge directement
-    dans le bon répertoire en utilisant le module de téléchargement de Piper.
-    Retourne True en cas de succès ou si la voix existe déjà, False en cas d'échec.
+    Checks if a voice exists locally. If not, downloads it directly
+    to the correct directory using Piper's download module.
+    Returns True on success or if the voice already exists, False on failure.
     """
     if not voice_name:
         return False
@@ -66,35 +66,35 @@ def download_voice_if_needed(voice_name: str) -> bool:
     json_path = os.path.join(VOICES_DIR, f"{voice_name}.onnx.json")
 
     if os.path.exists(onnx_path) and os.path.exists(json_path):
-        print(f"La voix '{voice_name}' existe déjà localement.")
+        print(f"Voice '{voice_name}' already exists locally.")
         return True
 
-    print(f"Téléchargement de la voix '{voice_name}'...")
+    print(f"Downloading voice '{voice_name}'...")
     try:
-        # MODIFICATION CLÉ : L'argument correct est --download-dir, et non --voices-dir
+        # KEY MODIFICATION: The correct argument is --download-dir, not --voices-dir
         command = [
             sys.executable, "-m", "piper.download_voices",
-            "--download-dir", VOICES_DIR,  # <- CORRIGÉ
+            "--download-dir", VOICES_DIR,  # <- FIXED
             voice_name
         ]
         
-        # On utilise capture_output=True pour éviter d'encombrer la console principale en cas de succès
+        # Using capture_output=True to avoid cluttering the main console on success
         result = subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8')
 
         if os.path.exists(onnx_path) and os.path.exists(json_path):
-            print(f"La voix '{voice_name}' a été téléchargée avec succès dans '{VOICES_DIR}'.")
+            print(f"Voice '{voice_name}' was successfully downloaded to '{VOICES_DIR}'.")
             return True
         else:
-            print(f"Erreur : Le téléchargement semble avoir réussi mais les fichiers de la voix '{voice_name}' sont introuvables.")
-            print(f"Sortie du script de téléchargement : {result.stdout}\n{result.stderr}")
+            print(f"Error: Download seemed to succeed, but voice files for '{voice_name}' are not found.")
+            print(f"Download script output: {result.stdout}\n{result.stderr}")
             return False
 
     except subprocess.CalledProcessError as e:
-        print(f"Erreur lors du téléchargement de la voix '{voice_name}'.")
-        print(f"Commande : {' '.join(e.cmd)}")
-        print(f"Sortie : {e.stdout}")
-        print(f"Erreur : {e.stderr}")
+        print(f"Error while downloading voice '{voice_name}'.")
+        print(f"Command: {' '.join(e.cmd)}")
+        print(f"Output: {e.stdout}")
+        print(f"Error: {e.stderr}")
         return False
     except Exception as e:
-        print(f"Une erreur inattendue est survenue lors du téléchargement : {e}")
+        print(f"An unexpected error occurred during download: {e}")
         return False
